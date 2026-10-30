@@ -1,1 +1,8 @@
 configTemplate.gs
+node_modules/**
+package.json
+package-lock.json
+README.md
+openApiConsole.sh
+**/*.js
+**/*.md

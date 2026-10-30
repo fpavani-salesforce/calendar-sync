@@ -18,7 +18,10 @@ function sendInvites(calendarId, eventList, email) {
     Log.debug(`Processing event: ${event.getTitle()} | ID: ${event.getId()} | Start: ${event.getStartTime()} | End: ${event.getEndTime()}`);
 
     const freshEvent = getEventFromList(calendarId, event, errorList);
-    if (freshEvent) {
+    if (freshEvent && apiEventHasExternalAttendee(freshEvent)) {
+      Log.info(`API guest list has an external domain. Sending a private block instead of forwarding | id: ${event.getId()}`);
+      errorList.push.apply(errorList, sendPrivateBlocks(calendarId, [event], email));
+    } else if (freshEvent) {
       Log.debug(`Sending invite to ${freshEvent.summary}`);
       sendInvite(calendarId, freshEvent, email, errorList);
     }
@@ -89,17 +92,35 @@ function getEventFromList(calendarId, event, errorList) {
 }
 
 /**
- * Adds an email to a single event's attendees and sends notifications.
- * Pushes to errorList on failure.
- * @param {string} calendarId - Calendar ID
- * @param {Object} calendarApiEvent - Calendar API v3 event object
- * @param {string} email - Email to add
- * @param {ErrorItem[]} errorList - Accumulator for errors
+ * Last-line guard so a classification miss cannot add the target mailbox
+ * to an invite that includes a client.
+ * @param {Object} calendarApiEvent
+ * @returns {boolean}
  */
+function apiEventHasExternalAttendee(calendarApiEvent) {
+  const emails = [];
+  if (calendarApiEvent.organizer && calendarApiEvent.organizer.email) {
+    emails.push(calendarApiEvent.organizer.email);
+  }
+  (calendarApiEvent.attendees || []).forEach(attendee => {
+    if (attendee.email && !attendee.resource) {
+      emails.push(attendee.email);
+    }
+  });
+  return participantNeedsPrivateBlock(emails, AUTHORIZED_DOMAIN_SYNC, EMAIL_ADDRESS_TO_ADD);
+}
+
 function sendInvite(calendarId, calendarApiEvent, email, errorList) {
   Log.debug(`START SendInvites.js:sendInvite(): calendarId: ${calendarId} | eventTitle ${calendarApiEvent.summary} | eventID: ${calendarApiEvent.id}`);
   try {
     const event = Calendar.Events.get(calendarId, calendarApiEvent.id);
+
+    if (apiEventHasExternalAttendee(event)) {
+      const errorMessage = `Refusing to forward event ${event.id}: a participant is outside AUTHORIZED_DOMAIN_SYNC`;
+      Log.error(errorMessage);
+      errorList.push(new ErrorItem(event.id, errorMessage, getEventStartDate(event)));
+      return;
+    }
 
     if (event.attendees) {
       event.attendees.push({ email: email });

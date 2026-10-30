@@ -20,6 +20,18 @@ You want to show your true calendar availability from within the client system's
       -  People that send you invites will never see that you forwarded to your target email account.
       -  Using a tool like CalendarBridge allows you to not sync event details or, only sync once you've accepted the event. Just a couple examples.
 
+## External participants
+
+Forwarding an invite adds the target mailbox as a guest and notifies everyone already on the event. Set `AUTHORIZED_DOMAIN_SYNC` in `config.gs` when some of those guests should not see that.
+
+```javascript
+const AUTHORIZED_DOMAIN_SYNC = 'employer.com, client.com';
+```
+
+- Guests only on those domains are forwarded as before.
+- Any other domain leaves the original event untouched. A new private event titled `Busy` is sent to `EMAIL_ADDRESS_TO_ADD` for the same time, with no title, description, or guest list from the source. The next run removes that block if the source event is cancelled or moved.
+- Leave `AUTHORIZED_DOMAIN_SYNC` blank to keep forwarding every event.
+
 ## Prerequisites
 
 - **Node.js** — Install via your package manager, for example:
@@ -53,7 +65,7 @@ You want to show your true calendar availability from within the client system's
    ```
 
 
-3. **Update configuration** by editing `main.gs`
+3. **Update configuration** by copying `configTemplate.gs` to `config.gs` and setting `EMAIL_ADDRESS_TO_ADD`. Set `AUTHORIZED_DOMAIN_SYNC` when events with outside guests should become private busy blocks instead of forwarded invites.
 
 4. **Push code** to the project:
    ```bash
@@ -87,7 +99,7 @@ You want to show your true calendar availability from within the client system's
   "scriptExtensions": [".gs"],
   "htmlExtensions": [".html"],
   "jsonExtensions": [".json"],
-  "filePushOrder": ["main.gs", "Utilities.gs", "FetchEvents.gs", "SkipRules.gs", "SendInvites.gs"],
+  "filePushOrder": ["main.gs", "Utilities.gs", "FetchEvents.gs", "DomainRules.gs", "SkipRules.gs", "SendInvites.gs", "PrivateBlocks.gs"],
   "skipSubdirectories": false
 }
 ```

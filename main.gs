@@ -13,7 +13,13 @@
  *
  * 2. Set Required Constants in config.gs. Make a copy of configTemplate.gs and name it config.gs so settings not in source control.
  *    → EMAIL_ADDRESS_TO_ADD (required)
- *      Set to the email address you want to have added to calendar invtes. I.e. Where do you want the events to be synced?
+ *      Mailbox that should show the blocked time. Internal events are forwarded
+ *      to this address. Events with a participant outside AUTHORIZED_DOMAIN_SYNC
+ *      become a new private "Busy" event instead, and the original invite is not changed.
+ *
+ *    → AUTHORIZED_DOMAIN_SYNC (optional)
+ *      Comma-separated email domains that are safe to forward, e.g. "employer.com, client.com".
+ *      Leave blank to forward every event.
  *
  *    → DAYS_IN_ADVANCE (optional, default: 14)
  *      Set to the number of days in advance to search your source calendar
@@ -50,11 +56,24 @@ function AddEmailToInvites() {
     calendar = CalendarApp.getDefaultCalendar();
   }
   
-  let eventList = fetchEvents(calendar, DAYS_IN_ADVANCE);
-  eventList = filterEventsToSync(eventList, EMAIL_ADDRESS_TO_ADD, isSecondaryCalendar);
-  Log.info(`Found ${eventList.length} events to process`);
+  const allEvents = fetchEvents(calendar, DAYS_IN_ADVANCE);
+  const eventList = filterEventsToSync(allEvents, EMAIL_ADDRESS_TO_ADD, isSecondaryCalendar);
+  const internalEvents = [];
+  const externalEvents = [];
+  eventList.forEach(event => {
+    if (hasExternalParticipant(event)) {
+      externalEvents.push(event);
+    } else {
+      internalEvents.push(event);
+    }
+  });
+  Log.info(`Internal events to forward: ${internalEvents.length}`);
+  Log.info(`External events to block privately: ${externalEvents.length}`);
 
-  const errorList = sendInvites(calendar.getId(), eventList, EMAIL_ADDRESS_TO_ADD);
+  const errorList = []
+    .concat(sendInvites(calendar.getId(), internalEvents, EMAIL_ADDRESS_TO_ADD))
+    .concat(sendPrivateBlocks(calendar.getId(), externalEvents, EMAIL_ADDRESS_TO_ADD))
+    .concat(removeStalePrivateBlocks(calendar.getId(), allEvents));
 
   if (errorList.length > 0) {
     Log.error(`Error sending invites: ${errorList.length} errors found`);
